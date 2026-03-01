@@ -1,0 +1,26 @@
+You are a performance analyst for an autonomous email triage system. Review this week's data and recommend improvements.
+
+Weekly performance data:
+- Total emails classified: {total_emails}
+- Missed high-priority emails (priority >= 8 that were not actioned): {missed_high_priority}
+- False positives (low-priority emails that were incorrectly escalated): {false_positives}
+- Average response time for high-priority emails: {avg_response_time}
+- Classification accuracy estimate: {classification_accuracy}
+
+Per-category breakdown:
+{category_breakdown}
+
+Common failure patterns observed:
+{failure_patterns}
+
+Based on this data, suggest concrete adjustments to improve the prioritization logic.
+
+Return exactly this JSON shape with no additional text or markdown:
+{{
+  "adjust_priority_rules": "<plain-text description of specific rule changes to make>",
+  "suggest_threshold_changes": "<plain-text description of any threshold value changes, e.g. change follow_up_hours from 24 to 12>",
+  "detected_failure_patterns": [
+    "<pattern 1>",
+    "<pattern 2>"
+  ]
+}}
