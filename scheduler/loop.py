@@ -18,6 +18,7 @@ from integrations.gmail import (
 )
 from memory.database import Database
 from memory.models import ActionLog, SenderMemory
+from scheduler.escalation import escalation_cycle
 from scheduler.follow_up import handle_follow_up
 from utils.logger import get_logger, log_decision
 
@@ -170,7 +171,21 @@ async def agent_cycle() -> None:
             )
         )
 
-    # --- 8. Check goal condition ---
+        # --- 8. Register for escalation tracking if high priority ---
+        if settings.escalation_enabled and priority >= settings.escalation_min_priority:
+            await db.track_email(
+                email_id=email.id,
+                sender=email.sender,
+                subject=email.subject,
+                priority=priority,
+                category=category,
+            )
+
+    # --- 9. Run escalation check for previously tracked emails ---
+    if settings.escalation_enabled:
+        await escalation_cycle(db)
+
+    # --- 10. Check goal condition ---
     _, post_unread = fetch_unread_emails(max_results=1)
     if post_unread <= settings.unread_goal:
         logger.info("Goal met: inbox unread=%d (goal=%d)", post_unread, settings.unread_goal)

@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     priority_draft_min: int = 6
     priority_follow_up_min: int = 7
 
+    # Priority decay / escalation
+    escalation_enabled: bool = True
+    escalation_min_priority: int = 7   # Only escalate emails originally classified at or above this
+    escalation_hours: int = 12         # Hours of being unread before each escalation step
+    escalation_step: int = 2           # Priority points added per escalation
+    escalation_max_priority: int = 10  # Hard cap on escalated priority
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

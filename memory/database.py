@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -37,6 +38,19 @@ CREATE TABLE IF NOT EXISTS reflection_log (
     adjust_priority_rules    TEXT NOT NULL,
     suggest_threshold_changes TEXT NOT NULL,
     detected_failure_patterns TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_priority_tracking (
+    email_id             TEXT PRIMARY KEY,
+    sender               TEXT NOT NULL,
+    subject              TEXT NOT NULL,
+    original_priority    INTEGER NOT NULL,
+    current_priority     INTEGER NOT NULL,
+    category             TEXT NOT NULL,
+    first_seen_at        TEXT NOT NULL,
+    last_escalated_at    TEXT,
+    escalation_count     INTEGER NOT NULL DEFAULT 0,
+    is_resolved          INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -172,5 +186,72 @@ class Database:
                     suggest_threshold_changes,
                     json.dumps(detected_failure_patterns),
                 ),
+            )
+            await db.commit()
+
+    # ------------------------------------------------------------------
+    # Priority escalation tracking
+    # ------------------------------------------------------------------
+    async def track_email(
+        self,
+        email_id: str,
+        sender: str,
+        subject: str,
+        priority: int,
+        category: str,
+    ) -> None:
+        """Register a high-priority email for escalation tracking. No-op if already tracked."""
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                """
+                INSERT INTO email_priority_tracking
+                    (email_id, sender, subject, original_priority, current_priority,
+                     category, first_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(email_id) DO NOTHING
+                """,
+                (
+                    email_id,
+                    sender,
+                    subject,
+                    priority,
+                    priority,
+                    category,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            await db.commit()
+
+    async def get_unresolved_tracked_emails(self) -> list[dict]:
+        """Return all tracked emails that have not yet been marked resolved."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM email_priority_tracking WHERE is_resolved = 0"
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def escalate_email_priority(self, email_id: str, new_priority: int) -> None:
+        """Bump the current_priority for an email and record the escalation timestamp."""
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                """
+                UPDATE email_priority_tracking
+                SET current_priority = ?,
+                    last_escalated_at = ?,
+                    escalation_count = escalation_count + 1
+                WHERE email_id = ?
+                """,
+                (new_priority, datetime.now(timezone.utc).isoformat(), email_id),
+            )
+            await db.commit()
+
+    async def resolve_email(self, email_id: str) -> None:
+        """Mark a tracked email as resolved (no longer needs escalation)."""
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE email_priority_tracking SET is_resolved = 1 WHERE email_id = ?",
+                (email_id,),
             )
             await db.commit()

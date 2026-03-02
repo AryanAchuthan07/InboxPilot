@@ -204,3 +204,31 @@ def save_draft(to: str, subject: str, body: str) -> str | None:
     except HttpError as exc:
         logger.error("Failed to save draft: %s", exc)
         return None
+
+
+def check_emails_read_status(email_ids: list[str]) -> set[str]:
+    """
+    Given a list of email IDs, return the subset that are no longer UNREAD.
+    Deleted or not-found emails are also considered resolved.
+    """
+    if not email_ids:
+        return set()
+    service = _build_service()
+    read_ids: set[str] = set()
+    for email_id in email_ids:
+        try:
+            msg = (
+                service.users()
+                .messages()
+                .get(userId="me", id=email_id, format="minimal")
+                .execute()
+            )
+            if "UNREAD" not in msg.get("labelIds", []):
+                read_ids.add(email_id)
+        except HttpError as exc:
+            if exc.resp.status == 404:
+                # Email deleted or not found — treat as resolved
+                read_ids.add(email_id)
+            else:
+                logger.warning("Could not check read status for %s: %s", email_id, exc)
+    return read_ids
